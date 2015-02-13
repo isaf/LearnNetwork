@@ -6,6 +6,7 @@
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
+typedef int SOCKET;
 #endif //_WIN32
 
 #define MAX_BUFFER_SIZE 1024

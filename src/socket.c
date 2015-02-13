@@ -9,7 +9,7 @@ static void init_fd_set(SOCKET lsfd, fd_set* pset);
 static int push_socket_msg(int msgtype, SOCKET fd, const char* data);
 static CLIENT_INFO* add_sock_info(SOCKET fd, sockaddr_in* cs_info);
 static CLIENT_INFO* remove_sock_info(SOCKET fd);
-static int reset_fd_queue();
+static void reset_fd_queue();
 
 //initialize the socket
 int sock_init() {
@@ -236,7 +236,7 @@ static CLIENT_INFO* remove_sock_info(SOCKET fd) {
 	return NULL;
 }
 
-static int reset_fd_queue() {
+static void reset_fd_queue() {
 	CLIENT_INFO* cur = c_head->next;
 	while (cur) {
 		if (cur->close)
