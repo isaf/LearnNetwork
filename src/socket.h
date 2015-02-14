@@ -6,7 +6,11 @@
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
-typedef int SOCKET;
+#include <netinet/in.h>
+typedef unsigned int SOCKET;
+typedef struct sockaddr SOCKADDR;
+#define SOCKET_ERROR -1
+#define INVALID_SOCKET (SOCKET)(~0)
 #endif //_WIN32
 
 #define MAX_BUFFER_SIZE 1024

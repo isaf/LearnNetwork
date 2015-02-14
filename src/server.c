@@ -1,5 +1,6 @@
 #include "server.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 static void broadcast_message(SOCKET sfd, const char* msg);
 static void message_loop(SOCKET lsfd);

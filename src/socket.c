@@ -1,7 +1,10 @@
 #include "socket.h"
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 static int g_clinet_counter = 0;
+static unsigned int g_max_fd = 0;
 static CLIENT_INFO* c_head = NULL;
 static CLIENT_INFO* c_tail = NULL;	//point to tail node
 
@@ -30,10 +33,12 @@ SOCKET sock_listen(int port, int backlog) {
 	len = sizeof(sockaddr_in);
 	memset(&local_address, 0, len);
 	local_address.sin_family = AF_INET;
-	local_address.sin_addr.S_un.S_addr = htonl(INADDR_ANY);//inet_addr("127.0.0.1");
+	local_address.sin_addr.s_addr = htonl(INADDR_ANY);//inet_addr("127.0.0.1");
 	local_address.sin_port = htons(port);
 
 	s = socket(AF_INET, SOCK_STREAM, 0);
+	if (s > g_max_fd)
+		g_max_fd = s;
 	if (s == INVALID_SOCKET) {
 		printf("socket error: create socket failed.\n");
 		return 0;
@@ -59,57 +64,69 @@ SOCKET sock_connect(const char* szAddress, int nPort) {
 
 	memset(&remote_address, 0, sizeof(remote_address));
 	remote_address.sin_family = AF_INET;
-	remote_address.sin_addr.S_un.S_addr = inet_addr(szAddress);
+	remote_address.sin_addr.s_addr = inet_addr(szAddress);
 	remote_address.sin_port = htons(nPort);
 
 	ret = connect(s, (SOCKADDR*)&remote_address, sizeof(SOCKADDR));
 	if (!ret)
 		return s;
-	closesocket(s);
+	sock_close(s);
 	return 0;
 }
 
 int sock_close(SOCKET sfd) {
+#ifdef _WIN32
 	return closesocket(sfd);
+#else
+	return close(sfd);
+#endif // _WIN32
+
 }
 
 int sock_wait(SOCKET lsfd, fd_set* pset) {
-	sockaddr_in* cs_info;
+	sockaddr_in* cs_info = NULL;
 	SOCKET cs = 0;
+	CLIENT_INFO* info = NULL;
 
 	int ret;
-	struct timeval tv = {1, 0};
+	struct timeval tv = {2, 0};
 	int len;
 	char recv_buff[MAX_BUFFER_SIZE] = {0};
-	unsigned int i;
 
 	len = sizeof(sockaddr_in);
 	reset_fd_queue();
 	init_fd_set(lsfd, pset);
-	ret = select(0, pset, NULL, NULL, &tv);
+	ret = select(g_max_fd, pset, NULL, NULL, &tv);
+	printf("%d,%d\n", ret, g_max_fd);
 	if (ret > 0) {
 		if (FD_ISSET(lsfd, pset)) {
 			FD_CLR(lsfd, pset);
 			cs_info = (sockaddr_in*)malloc(sizeof(sockaddr_in));
 			cs = accept(lsfd, (struct sockaddr *)cs_info, &len);
 			if (cs != INVALID_SOCKET) {
-				CLIENT_INFO* info = add_sock_info(cs, cs_info);
+				info = add_sock_info(cs, cs_info);
+				if (cs > g_max_fd)
+					g_max_fd = cs;
 				if (info)
 					push_socket_msg(SOCK_TYPE_CONNECT, cs, 0);
 			}
 		}
-		for (i = 0; i < pset->fd_count; ++i) {
-			SOCKET fd = pset->fd_array[i];
-			CLIENT_INFO* info = sock_get_fd_info(fd);
-			ret = recv(fd, recv_buff, sizeof(recv_buff), 0);
-			if (ret > 0) {
-				if (info && !info->close)
-					push_socket_msg(SOCK_TYPE_DATA, fd, recv_buff);
+
+		info = sock_get_fd_queue();
+		while (info) {
+			SOCKET fd = info->sock;
+			if (FD_ISSET(fd, pset)) {
+				ret = recv(fd, recv_buff, sizeof(recv_buff), 0);
+				if (ret > 0) {
+					if (info && !info->close)
+						push_socket_msg(SOCK_TYPE_DATA, fd, recv_buff);
 				}
-			else if (ret <= 0) {
-				info->close = 1;
-				push_socket_msg(SOCK_TYPE_CLOSE, fd, 0);
+				else if (ret <= 0) {
+					info->close = 1;
+					push_socket_msg(SOCK_TYPE_CLOSE, fd, 0);
+				}
 			}
+			info = info->next;
 		}
 		return 1;
 	}
