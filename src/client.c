@@ -23,7 +23,7 @@ int cli_start(const char* address, int port) {
 #ifdef _WIN32
 			CreateThread(NULL, 0, recv_process, (void*)s, 0, &thread_id);
 #else
-			pthread_create(&thread_id, NULL, (void *)recv_process, NULL);
+			pthread_create(&thread_id, NULL, (void *)recv_process, (void*)s);
 #endif
 			while (1) {
 				printf("input sth:\n");
@@ -47,8 +47,10 @@ void recv_process(void* sockfd)
 	char buff[1024];
 	while (1) {
 		ret = recv(s, buff, sizeof(buff), 0);
-		if (ret != SOCKET_ERROR)
+		if (ret > 0)
 			printf("recv %s", buff);
 	}
+#ifdef _WIN32
 	return 1;
+#endif
 }
