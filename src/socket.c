@@ -2,17 +2,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "poll.h"
 
-static int g_clinet_counter = 0;
-static unsigned int g_max_fd = 0;
-static CLIENT_INFO* c_head = NULL;
-static CLIENT_INFO* c_tail = NULL;	//point to tail node
+unsigned int g_max_fd = 0;
+int g_clinet_counter = 0;
+CLIENT_INFO* c_head = NULL;
+CLIENT_INFO* c_tail = NULL;	//point to tail node
 
-static void init_fd_set(SOCKET lsfd, fd_set* pset);
-static int push_socket_msg(int msgtype, SOCKET fd, const char* data);
-static CLIENT_INFO* add_sock_info(SOCKET fd, sockaddr_in* cs_info);
 static CLIENT_INFO* remove_sock_info(SOCKET fd);
-static void reset_fd_queue();
 
 //initialize the socket
 int sock_init() {
@@ -53,6 +50,7 @@ SOCKET sock_listen(int port, int backlog) {
 		printf("socket error: listen failed\n");
 		return 0;
 	}
+	poll_start(s);
 	return s;
 }
 
@@ -75,6 +73,8 @@ SOCKET sock_connect(const char* szAddress, int nPort) {
 }
 
 int sock_close(SOCKET sfd) {
+	CLIENT_INFO* info = sock_get_fd_info(sfd);
+	info->close = 1;
 #ifdef _WIN32
 	return closesocket(sfd);
 #else
@@ -83,55 +83,9 @@ int sock_close(SOCKET sfd) {
 
 }
 
-int sock_wait(SOCKET lsfd, fd_set* pset) {
-	sockaddr_in* cs_info = NULL;
-	SOCKET cs = 0;
-	CLIENT_INFO* info = NULL;
-
-	int ret;
-	struct timeval tv = {2, 0};
-	int len;
-	char recv_buff[MAX_BUFFER_SIZE] = {0};
-
-	len = sizeof(sockaddr_in);
-	reset_fd_queue();
-	init_fd_set(lsfd, pset);
-	ret = select(g_max_fd, pset, NULL, NULL, &tv);
-	printf("%d,%d\n", ret, g_max_fd);
-	if (ret > 0) {
-		if (FD_ISSET(lsfd, pset)) {
-			FD_CLR(lsfd, pset);
-			cs_info = (sockaddr_in*)malloc(sizeof(sockaddr_in));
-			cs = accept(lsfd, (struct sockaddr *)cs_info, &len);
-			if (cs != INVALID_SOCKET) {
-				info = add_sock_info(cs, cs_info);
-				if (cs > g_max_fd)
-					g_max_fd = cs;
-				if (info)
-					push_socket_msg(SOCK_TYPE_CONNECT, cs, 0);
-			}
-		}
-
-		info = sock_get_fd_queue();
-		while (info) {
-			SOCKET fd = info->sock;
-			if (FD_ISSET(fd, pset)) {
-				ret = recv(fd, recv_buff, sizeof(recv_buff), 0);
-				if (ret > 0) {
-					if (info && !info->close)
-						push_socket_msg(SOCK_TYPE_DATA, fd, recv_buff);
-				}
-				else if (ret <= 0) {
-					info->close = 1;
-					push_socket_msg(SOCK_TYPE_CLOSE, fd, 0);
-				}
-			}
-			info = info->next;
-		}
-		return 1;
-	}
-
-	return 0;
+int sock_wait(SOCKET lsfd) {
+	sock_reset_client_info();
+	return poll_wait(lsfd);
 }
 
 SOCK_MSG* sock_read(SOCKET fd) {
@@ -151,6 +105,29 @@ int sock_write(SOCKET fd, const char* data) {
 	return 0;
 }
 
+
+
+int sock_uninit() {
+	poll_close();
+#ifdef _WIN32
+	WSACleanup();
+#endif // _WIN32
+	return 1;
+}
+
+int sock_init_client_queue() {
+	if (!c_tail) {	//initialize
+		CLIENT_INFO* cur = NULL;
+		c_head = (CLIENT_INFO*)malloc(sizeof(CLIENT_INFO));
+		memset(c_head, 0, sizeof(CLIENT_INFO));
+		c_tail = c_head;
+		cur = c_head->next;
+		return 1;
+	}
+	return 0;
+}
+
+
 CLIENT_INFO* sock_get_fd_info(SOCKET sfd) {
 	CLIENT_INFO* cur = c_head->next;
 	while (cur) {
@@ -162,41 +139,13 @@ CLIENT_INFO* sock_get_fd_info(SOCKET sfd) {
 	return NULL;
 }
 
-CLIENT_INFO* sock_get_fd_queue() {
+CLIENT_INFO* sock_get_client_queue() {
 	return c_head->next;
 }
 
-int sock_uninit() {
-#ifdef _WIN32
-	WSACleanup();
-#endif // _WIN32
-	return 1;
-}
-
-int sock_init_fd_queue() {
-	if (!c_tail) {	//initialize
-		c_head = (CLIENT_INFO*)malloc(sizeof(CLIENT_INFO));
-		memset(c_head, 0, sizeof(CLIENT_INFO));
-		c_tail = c_head;
-		return 1;
-	}
-	return 0;
-}
-
-static void init_fd_set(SOCKET lsfd, fd_set* pset) {
-	CLIENT_INFO* cur = c_head->next;
-
-	FD_ZERO(pset);
-	FD_SET(lsfd, pset);
-	while (cur) {
-		FD_SET(cur->sock, pset);
-		cur = cur->next;
-	}
-}
-
-static int push_socket_msg(int msgtype, SOCKET fd, const char* data) {
+int sock_push_msg(int msgtype, SOCKET fd, const char* data) {
 	CLIENT_INFO* info = sock_get_fd_info(fd);
-	if (info) {
+	if (info && !info->close) {
 		SOCK_MSG* msg = (SOCK_MSG*)malloc(sizeof(SOCK_MSG));
 		msg->type = msgtype;
 		if (msgtype == SOCK_TYPE_DATA)
@@ -214,7 +163,7 @@ static int push_socket_msg(int msgtype, SOCKET fd, const char* data) {
 	return 0;
 }
 
-static CLIENT_INFO* add_sock_info(SOCKET fd, sockaddr_in* cs_info) {
+CLIENT_INFO* sock_add_client_info(SOCKET fd, sockaddr_in* cs_info) {
 	CLIENT_INFO* info = (CLIENT_INFO*)malloc(sizeof(CLIENT_INFO));
 
 	info->sock = fd;
@@ -230,6 +179,16 @@ static CLIENT_INFO* add_sock_info(SOCKET fd, sockaddr_in* cs_info) {
 	c_tail = info;
 
 	return info;
+}
+
+void sock_reset_client_info() {
+	CLIENT_INFO* cur = c_head->next;
+	while (cur) {
+		if (cur->close)
+			cur = remove_sock_info(cur->sock);
+		else
+			cur = cur->next;
+	}
 }
 
 static CLIENT_INFO* remove_sock_info(SOCKET fd) {
@@ -251,14 +210,4 @@ static CLIENT_INFO* remove_sock_info(SOCKET fd) {
 			cur = cur->next;
 	}
 	return NULL;
-}
-
-static void reset_fd_queue() {
-	CLIENT_INFO* cur = c_head->next;
-	while (cur) {
-		if (cur->close)
-			cur = remove_sock_info(cur->sock);
-		else
-			cur = cur->next;
-	}
 }

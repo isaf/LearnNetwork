@@ -1,51 +1,39 @@
 #include "client.h"
-#include <stdio.h>
+#include "thread.h"
 #ifndef _WIN32
 #include <pthread.h>
 #endif // !_WIN32
 
-#ifdef _WIN32
-typedef DWORD THREAD_ID;
-static DWORD WINAPI recv_process(void* sockfd);
-#else
-typedef pthread_t THREAD_ID;
-void recv_process(void* sockfd);
-#endif // _WIN32
-
+static CALL_BACK recv_process(void* sockfd);
 
 int cli_start(const char* address, int port) {
 	printf("client starting...\n");
 	if (sock_init()) {
 		SOCKET s = sock_connect(address, port);
+
 		if (s > 0) {
-			THREAD_ID thread_id;
-			char send_buff[1024] = {0};
-#ifdef _WIN32
-			CreateThread(NULL, 0, recv_process, (void*)s, 0, &thread_id);
-#else
-			pthread_create(&thread_id, NULL, (void *)recv_process, (void*)s);
-#endif
-			while (1) {
+			char send_buff[MAX_BUFFER_SIZE] = {0};
+
+			thread_create(recv_process, (void*)s);
+			while (TRUE) {
 				printf("input sth:\n");
 				scanf("%s", send_buff);
 				send(s, send_buff, sizeof(send_buff), 0);
 			}
+			return 1;
 		}
-		return 1;
 	}
 	sock_uninit();
 	return 0;
 }
-#ifdef _WIN32
-static DWORD WINAPI recv_process(void* sockfd)
-#else
-void recv_process(void* sockfd)
-#endif
+
+static CALL_BACK recv_process(void* data)
 {
-	SOCKET s = (SOCKET)sockfd;
+	SOCKET s = (SOCKET)data;
 	int ret = 0;
-	char buff[1024];
-	while (1) {
+	char buff[MAX_BUFFER_SIZE] = {0};
+
+	while (TRUE) {
 		ret = recv(s, buff, sizeof(buff), 0);
 		if (ret > 0)
 			printf("recv %s", buff);

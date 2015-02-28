@@ -1,5 +1,4 @@
 #include "server.h"
-#include <stdio.h>
 #include <stdlib.h>
 
 static void broadcast_message(SOCKET sfd, const char* msg);
@@ -10,7 +9,7 @@ int svr_start(int port) {
 	printf("server starting...\n");
 	if (sock_init()) {
 		SOCKET lsfd = sock_listen(port, 0);
-		sock_init_fd_queue();
+		sock_init_client_queue();
 		if (lsfd > 0) {
 			ret = 1;
 			printf("server start ok!\n");
@@ -24,14 +23,13 @@ int svr_start(int port) {
 }
 
 static void message_loop(SOCKET lsfd) {
-	fd_set rfds;
 	char send_buff[MAX_BUFFER_SIZE] = {0};
-	while (1) {
-		if (sock_wait(lsfd, &rfds)) {
-			CLIENT_INFO* info = sock_get_fd_queue();
+	while (TRUE) {
+		if (sock_wait(lsfd)) {
+			CLIENT_INFO* info = sock_get_client_queue();
 			while (info) {
 				SOCKET fd = info->sock;
-				while (1) {
+				while (TRUE) {
 					SOCK_MSG* msg = sock_read(fd);
 					if (msg) {
 						switch (msg->type)

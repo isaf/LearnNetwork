@@ -1,6 +1,8 @@
 #ifndef __SOCKET_H__
 #define __SOCKET_H__
 
+#include "macro_define.h"
+#include <stdio.h>
 #ifdef _WIN32
 #include <WinSock2.h>
 #else
@@ -39,16 +41,24 @@ typedef struct CLIENT_INFO {
 	struct CLIENT_INFO* next;
 }CLIENT_INFO;
 
+extern unsigned int g_max_fd;
+extern int g_clinet_counter;
+extern CLIENT_INFO* c_head;
+extern CLIENT_INFO* c_tail;
+
 int sock_init();
 SOCKET sock_listen(int port, int backlog);
 SOCKET sock_connect(const char* address, int port);
 int sock_close(SOCKET sfd);
 int sock_uninit();
-int sock_wait(SOCKET lsfd, fd_set* pset);
+int sock_wait(SOCKET lsfd);
 SOCK_MSG* sock_read(SOCKET fd);
 int sock_write(SOCKET fd, const char* data);
 CLIENT_INFO* sock_get_fd_info(SOCKET sfd);
-CLIENT_INFO* sock_get_fd_queue();
-int sock_init_fd_queue();
+CLIENT_INFO* sock_get_client_queue();
+int sock_init_client_queue();
+int sock_push_msg(int msgtype, SOCKET fd, const char* data);
+CLIENT_INFO* sock_add_client_info(SOCKET fd, sockaddr_in* cs_info);
+void sock_reset_client_info();
 
 #endif //__SOCKET_H__
