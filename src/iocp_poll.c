@@ -2,7 +2,7 @@
 #include "socket.h"
 #include "thread.h"
 
-HANDLE g_iocp_handle;
+static HANDLE g_iocp_handle;
 typedef struct {
 	SOCKET s;
 }COMP_KEY;
@@ -32,11 +32,11 @@ int poll_wait(SOCKET lsfd) {
 	DWORD flags = 0;
 	int ret;
 	fd_set fdset;
-	struct timeval tv = {0, 0};
+	struct timeval tv = {0, 10};	//if time is zero, cpu will run wasteful.
 
 	FD_ZERO(&fdset);
 	FD_SET(lsfd, &fdset);
-	ret = select(g_max_fd, &fdset, NULL, NULL, &tv);
+	ret = select(NULL, &fdset, NULL, NULL, &tv);	//the first arg: "max fd" is useless in windows, here set it to NULL; 
 	if (ret > 0) {
 		COMP_KEY* key = (COMP_KEY*)malloc(sizeof(COMP_KEY));
 		IO_DATA* io_data = (IO_DATA*)malloc(sizeof(IO_DATA));
@@ -74,7 +74,7 @@ static HANDLE create_iocp() {
 	unsigned int thread_cout;
 
 	GetSystemInfo(&sys_into);
-	thread_cout = 1/*sys_into.dwNumberOfProcessors * 2*/;
+	thread_cout = sys_into.dwNumberOfProcessors * 2;
 	iocp_handle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, thread_cout);
 	for (i = 0; i < thread_cout; ++i)
 		thread_create(iocp_work_proc, (void*)iocp_handle);

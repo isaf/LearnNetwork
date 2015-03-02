@@ -23,7 +23,7 @@ int poll_wait(SOCKET lsfd) {
 
 	len = sizeof(sockaddr_in);
 	init_fd_set(lsfd, pset);
-	ret = select(g_max_fd + 1, pset, NULL, NULL, &tv);
+	ret = select(g_max_fd + 1, pset, NULL, NULL, &tv);	//the first arg must be max fd plus 1 in linux.
 	if (ret > 0) {
 		if (FD_ISSET(lsfd, pset)) {
 			FD_CLR(lsfd, pset);
@@ -43,13 +43,10 @@ int poll_wait(SOCKET lsfd) {
 			SOCKET fd = info->sock;
 			if (FD_ISSET(fd, pset)) {
 				ret = recv(fd, recv_buff, sizeof(recv_buff), 0);
-				if (ret > 0) {
-					if (info && !info->close)
-						sock_push_msg(SOCK_TYPE_DATA, fd, recv_buff);
-				}
-				else if (ret <= 0) {
+				if (ret > 0)
+					sock_push_msg(SOCK_TYPE_DATA, fd, recv_buff);
+				else if (ret <= 0)
 					sock_push_msg(SOCK_TYPE_CLOSE, fd, 0);
-				}
 			}
 			info = info->next;
 		}
