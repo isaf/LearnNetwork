@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 typedef unsigned int SOCKET;
 typedef struct sockaddr SOCKADDR;
 #define SOCKET_ERROR -1

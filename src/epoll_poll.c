@@ -1,4 +1,4 @@
-#if defined(linux) && defined(USE_EPOLL)
+#if defined(USE_EPOLL)
 
 #include "socket.h"
 #include <stdlib.h>

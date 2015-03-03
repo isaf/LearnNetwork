@@ -1,6 +1,9 @@
 #if !defined(USE_IOCP) && !defined(USE_EPOLL) && !defined(USE_KQUEUE)
 #include "socket.h"
 #include <stdlib.h>
+#ifndef _WIN32
+#include <sys/select.h>
+#endif
 
 static fd_set g_fdset;
 
